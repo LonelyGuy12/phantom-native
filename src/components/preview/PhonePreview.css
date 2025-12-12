@@ -1,0 +1,132 @@
+.phone-preview-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: var(--spacing-md);
+}
+
+.preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.toolbar-btn {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: all 0.2s;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.toolbar-btn:hover {
+    border-color: var(--accent);
+    background: rgba(74, 158, 255, 0.1);
+    color: var(--accent);
+}
+
+.toolbar-btn.active {
+    border-color: var(--accent);
+    background: rgba(74, 158, 255, 0.2);
+    color: var(--accent);
+}
+
+.device-label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-left: auto;
+}
+
+.preview-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: var(--spacing-lg) 0;
+}
+
+.phone-frame {
+    position: relative;
+    background: linear-gradient(145deg, #1a1a24, #13131a);
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s;
+}
+
+.phone-frame.hidden {
+    background: none;
+    padding: 0;
+    border-radius: 0 !important;
+    box-shadow: none;
+}
+
+/* Device-specific styles */
+.phone-frame.device-ios {
+    background: linear-gradient(145deg, #1a1a24, #13131a);
+}
+
+.phone-frame.device-android {
+    background: linear-gradient(145deg, #1e3a1e, #132013);
+}
+
+.phone-frame.device-web {
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
+.phone-notch {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 30px;
+    background: #000;
+    border-radius: 0 0 16px 16px;
+    z-index: 10;
+    transition: opacity 0.3s;
+}
+
+.phone-frame.hidden .phone-notch {
+    opacity: 0;
+}
+
+.phone-screen {
+    background: #000;
+    overflow: hidden;
+    position: relative;
+    transition: border-radius 0.3s;
+}
+
+.phone-frame.hidden .phone-screen {
+    border-radius: 0 !important;
+}
+
+.render-canvas {
+    display: block;
+    background: #0a0a0f;
+}
+
+.phone-home-indicator {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    transition: opacity 0.3s;
+}
+
+.phone-frame.hidden .phone-home-indicator {
+    opacity: 0;
+}

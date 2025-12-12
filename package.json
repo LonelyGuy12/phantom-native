@@ -1,0 +1,36 @@
+{
+    "name": "phantom-native",
+    "version": "1.0.0-alpha",
+    "description": "A Browser-Based React Native Virtual Machine",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    },
+    "dependencies": {
+        "@babel/standalone": "^7.23.6",
+        "@monaco-editor/react": "^4.6.0",
+        "@webcontainer/api": "^1.1.9",
+        "canvaskit-wasm": "^0.39.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "yoga-wasm-web": "^0.3.3",
+        "zustand": "^4.4.7"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.43",
+        "@types/react-dom": "^18.2.17",
+        "@typescript-eslint/eslint-plugin": "^6.14.0",
+        "@typescript-eslint/parser": "^6.14.0",
+        "@vitejs/plugin-react": "^4.2.1",
+        "eslint": "^8.55.0",
+        "eslint-plugin-react-hooks": "^4.6.0",
+        "eslint-plugin-react-refresh": "^0.4.5",
+        "typescript": "^5.2.2",
+        "vite": "^5.0.8",
+        "vite-plugin-top-level-await": "^1.6.0",
+        "vite-plugin-wasm": "^3.5.0"
+    }
+}
