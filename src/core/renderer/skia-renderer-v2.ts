@@ -5,64 +5,65 @@
  * This renderer works with the JSON format, not the heavy RenderNode class.
  */
 
-import type { SerializableNode } from '../runtime/worker-bridge'
-import { getCanvasKit, getSurface, getCanvas } from './skia-renderer'
+import type { SerializableNode, SerializableRenderTree } from '../runtime/worker-bridge'
+import { getSkia } from './skia-renderer'
 
 /**
- * Render a serializable tree to the canvas
+ * Render a serializable tree to canvas
  */
-export function renderSerializableTree(tree: SerializableNode, clearColor: string = '#0a0a0f') {
-    const canvas = getCanvas()
-    const CanvasKit = getCanvasKit()
+export function renderSerializableTree(tree: SerializableRenderTree) {
+    const { CanvasKit, surface, canvas } = getSkia()
 
-    if (!canvas || !CanvasKit) {
-        throw new Error('Skia not initialized')
+    if (!CanvasKit || !surface || !canvas) {
+        console.error('[Renderer] Canvas not initialized')
+        return
     }
 
+    console.log('[Renderer] Rendering tree:', tree)
+
     // Clear canvas
-    const paint = new CanvasKit.Paint()
-    paint.setColor(CanvasKit.parseColorString(clearColor))
-    paint.setStyle(CanvasKit.PaintStyle.Fill)
-    canvas.drawPaint(paint)
-    paint.delete()
+    canvas.clear(CanvasKit.BLACK)
 
-    // Render tree
-    renderNode(tree, 0, 0, CanvasKit, canvas)
+    try {
+        // Render root node
+        renderNode(tree.root, CanvasKit, canvas)
 
-    // Flush to screen
-    getSurface()?.flush()
+        // Flush to screen
+        surface.flush()
+
+        console.log('[Renderer] ✓ Render complete')
+    } catch (error) {
+        console.error('[Renderer] Render error:', error)
+    }
 }
 
 /**
  * Recursively render a node and its children
  */
-function renderNode(
-    node: SerializableNode,
-    offsetX: number,
-    offsetY: number,
-    CanvasKit: any,
-    canvas: any
-) {
-    const x = offsetX + node.layout.left
-    const y = offsetY + node.layout.top
-    const width = node.layout.width
-    const height = node.layout.height
+function renderNode(node: SerializableNode, CanvasKit: any, canvas: any) {
+    if (!node || !node.layout) {
+        console.warn('[Renderer] Node missing layout:', node)
+        return
+    }
 
-    // Render based on type
+    const { left, top, width, height } = node.layout
+
+    console.log(`[Renderer] Drawing ${node.type} at (${left}, ${top}) size (${width}x${height})`)
+
+    // Draw based on type
     if (node.type === 'view') {
-        drawView(x, y, width, height, node.style || {}, CanvasKit, canvas)
+        drawView(left, top, width, height, node.style, CanvasKit, canvas)
     } else if (node.type === 'text' && node.text) {
-        // Draw text background if backgroundColor is set
-        if (node.style?.backgroundColor) {
-            drawView(x, y, width, height, node.style, CanvasKit, canvas)
-        }
-        drawText(node.text, x, y, width, node.textStyle || {}, CanvasKit, canvas)
+        const textStyle = node.textStyle || {}
+        drawText(node.text, left, top, width, textStyle, CanvasKit, canvas)
     }
 
     // Render children
-    node.children.forEach(child => {
-        renderNode(child, x, y, CanvasKit, canvas)
-    })
+    if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+            renderNode(child, CanvasKit, canvas)
+        })
+    }
 }
 
 /**
@@ -115,37 +116,6 @@ function drawView(
         } else {
             canvas.drawRect(CanvasKit.LTRBRect(x, y, x + width, y + height), paint)
         }
-    }
-
-    // Shadow
-    if (style.shadowColor && style.shadowOpacity) {
-        // Simplified shadow implementation
-        const shadowPaint = new CanvasKit.Paint()
-        shadowPaint.setColor(CanvasKit.parseColorString(style.shadowColor))
-        shadowPaint.setAlphaf(style.shadowOpacity)
-        shadowPaint.setStyle(CanvasKit.PaintStyle.Fill)
-        shadowPaint.setMaskFilter(
-            CanvasKit.MaskFilter.MakeBlur(CanvasKit.BlurStyle.Normal, style.shadowRadius || 4, true)
-        )
-
-        const shadowX = x + (style.shadowOffset?.width || 0)
-        const shadowY = y + (style.shadowOffset?.height || 0)
-
-        if (style.borderRadius) {
-            const rect = CanvasKit.RRectXY(
-                CanvasKit.LTRBRect(shadowX, shadowY, shadowX + width, shadowY + height),
-                style.borderRadius,
-                style.borderRadius
-            )
-            canvas.drawRRect(rect, shadowPaint)
-        } else {
-            canvas.drawRect(
-                CanvasKit.LTRBRect(shadowX, shadowY, shadowX + width, shadowY + height),
-                shadowPaint
-            )
-        }
-
-        shadowPaint.delete()
     }
 
     paint.delete()
