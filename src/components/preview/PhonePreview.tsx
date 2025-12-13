@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { initYoga } from '@/core/renderer/yoga-layout'
-import { initSkia, clearCanvas, flush } from '@/core/renderer/skia-renderer'
-import { createDemoScene } from '@/core/renderer/render-node'
-import { executeCode, reExecute } from '@/core/runtime/code-executor'
+import { initSkia } from '@/core/renderer/skia-renderer'
+import { renderSerializableTree } from '@/core/renderer/skia-renderer-v2'
 import { hitTest } from '@/core/renderer/hit-testing'
-import type { RenderNode } from '@/core/renderer/render-node'
+import type { WorkerToMainMessage, MainToWorkerMessage, SerializableRenderTree } from '@/core/runtime/worker-bridge'
 import './PhonePreview.css'
 
 type DeviceType = 'ios' | 'android' | 'web'
@@ -44,6 +42,7 @@ const DEVICE_CONFIG = {
 
 function PhonePreview({ device }: PhonePreviewProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
+    const workerRef = useRef<Worker | null>(null)
     const setCanvasReady = useAppStore((state) => state.setCanvasReady)
     const setVMStatus = useAppStore((state) => state.setVMStatus)
     const addTerminalOutput = useAppStore((state) => state.addTerminalOutput)
@@ -51,10 +50,11 @@ function PhonePreview({ device }: PhonePreviewProps) {
     const runTrigger = useAppStore((state) => state.runTrigger)
     const [deviceFrame, setDeviceFrame] = useState(true)
     const [initialized, setInitialized] = useState(false)
-    const [currentScene, setCurrentScene] = useState<RenderNode | null>(null)
+    const [currentTree, setCurrentTree] = useState<SerializableRenderTree | null>(null)
 
     const config = DEVICE_CONFIG[device]
 
+    // Initialize Skia (main thread) and Worker
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas || initialized) return
@@ -74,56 +74,93 @@ function PhonePreview({ device }: PhonePreviewProps) {
                 canvas.style.width = `${config.width}px`
                 canvas.style.height = `${config.height}px`
 
-                // Initialize Yoga WASM
-                addTerminalOutput('[Graphics] Loading Yoga WASM...')
-                console.log('[DEBUG] Loading Yoga...')
-                await initYoga()
-                console.log('[DEBUG] Yoga loaded')
-
-                // Initialize Skia CanvasKit
+                // Initialize Skia CanvasKit (Main Thread)
                 addTerminalOutput('[Graphics] Loading Skia CanvasKit...')
                 console.log('[DEBUG] Loading Skia...')
                 await initSkia(canvas)
                 console.log('[DEBUG] Skia loaded')
+                addTerminalOutput('[Graphics] ✓ Skia ready!')
 
-                addTerminalOutput('[Graphics] ✓ Graphics engine ready!')
-                console.log('[DEBUG] Graphics engine ready!')
-                setCanvasReady(true)
-                setVMStatus('ready')
-                setInitialized(true)
+                // Initialize Worker
+                addTerminalOutput('[Worker] Initializing runtime worker...')
+                console.log('[DEBUG] Creating worker...')
 
-                // Render demo scene initially
-                console.log('[DEBUG] Rendering demo scene...')
-                renderDemoScene()
+                // Use Vite's worker import syntax
+                const worker = new Worker(
+                    new URL('@/core/runtime/worker.ts', import.meta.url),
+                    { type: 'module' }
+                )
+
+                workerRef.current = worker
+
+                // Listen for messages from worker
+                worker.onmessage = (event: MessageEvent<WorkerToMainMessage>) => {
+                    handleWorkerMessage(event.data)
+                }
+
+                worker.onerror = (error) => {
+                    console.error('[DEBUG] Worker error:', error)
+                    addTerminalOutput(`[Worker] ✗ Error: ${error.message}`)
+                    setVMStatus('error')
+                }
+
+                // Initialize the worker
+                const initMsg: MainToWorkerMessage = { type: 'INIT_WORKER' }
+                worker.postMessage(initMsg)
+
+                console.log('[DEBUG] Worker created, waiting for ready...')
             } catch (error: any) {
                 console.error('[DEBUG] Graphics initialization error:', error)
                 addTerminalOutput(`[Graphics] ✗ Error: ${error.message || error}`)
                 setVMStatus('error')
-
-                // Fallback to 2D context for error display
-                const ctx = canvas.getContext('2d')
-                if (ctx) {
-                    ctx.fillStyle = '#0a0a0f'
-                    ctx.fillRect(0, 0, config.width, config.height)
-                    ctx.fillStyle = '#ef4444'
-                    ctx.font = '16px Inter, sans-serif'
-                    ctx.textAlign = 'center'
-                    ctx.textBaseline = 'middle'
-                    ctx.fillText('Graphics Engine Error', config.width / 2, config.height / 2 - 20)
-                    ctx.fillStyle = '#75758a'
-                    ctx.font = '14px Inter, sans-serif'
-                    ctx.fillText('See console for details', config.width / 2, config.height / 2 + 10)
-                }
             }
         }
 
         console.log('[DEBUG] PhonePreview mounted, initializing...')
         initializeGraphicsEngine()
+
+        return () => {
+            // Cleanup worker on unmount
+            if (workerRef.current) {
+                workerRef.current.terminate()
+            }
+        }
     }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Handle messages from worker
+    const handleWorkerMessage = (message: WorkerToMainMessage) => {
+        console.log('[DEBUG] Worker message:', message)
+
+        switch (message.type) {
+            case 'WORKER_READY':
+                addTerminalOutput('[Worker] ✓ Runtime ready!')
+                setVMStatus('ready')
+                setCanvasReady(true)
+                setInitialized(true)
+                break
+
+            case 'RENDER_TREE':
+                console.log('[DEBUG] Received render tree')
+                setCurrentTree(message.tree)
+                renderSerializableTree(message.tree)
+                addTerminalOutput('[Renderer] ✓ Canvas updated')
+                break
+
+            case 'EXECUTION_ERROR':
+                console.error('[DEBUG] Execution error:', message.error)
+                addTerminalOutput(`[Runtime] ✗ ${message.error}`)
+                setVMStatus('error')
+                break
+
+            case 'LOG':
+                addTerminalOutput(`[Worker] ${message.message}`)
+                break
+        }
+    }
 
     // Execute code when editor content changes (with debounce)
     useEffect(() => {
-        if (!initialized || !editorContent) return
+        if (!initialized || !editorContent || !workerRef.current) return
 
         const timer = setTimeout(() => {
             executeUserCode()
@@ -140,85 +177,29 @@ function PhonePreview({ device }: PhonePreviewProps) {
 
     // Re-render when device changes
     useEffect(() => {
-        if (initialized && currentScene) {
-            renderScene(currentScene)
+        if (initialized && currentTree) {
+            renderSerializableTree(currentTree)
         }
-    }, [device, initialized, currentScene]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [device, initialized, currentTree]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const executeUserCode = () => {
-        try {
-            console.log('[DEBUG] executeUserCode called')
-            console.log('[DEBUG] Editor content length:', editorContent?.length)
+        if (!workerRef.current) return
 
-            setVMStatus('building')
-            addTerminalOutput(`[Runtime] Executing user code...`)
+        console.log('[DEBUG] Sending code to worker')
+        setVMStatus('building')
 
-            const result = executeCode(editorContent, handleStateUpdate)
-
-            console.log('[DEBUG] Execution result:', result)
-
-            if (result.success && result.renderTree) {
-                addTerminalOutput('[Runtime] ✓ Code executed successfully')
-                setCurrentScene(result.renderTree)
-                renderScene(result.renderTree)
-                setVMStatus('ready')
-            } else {
-                console.error('[DEBUG] Execution failed:', result.error)
-                addTerminalOutput(`[Runtime] ✗ ${result.error}`)
-                setVMStatus('error')
-            }
-        } catch (error: any) {
-            console.error('[DEBUG] Execution error:', error)
-            addTerminalOutput(`[Runtime] ✗ ${error.message}`)
-            setVMStatus('error')
+        const msg: MainToWorkerMessage = {
+            type: 'EXECUTE_CODE',
+            code: editorContent,
+            deviceWidth: config.width,
+            deviceHeight: config.height,
         }
-    }
 
-    const handleStateUpdate = () => {
-        // Re-execute code on state update
-        const result = reExecute()
-        if (result.success && result.renderTree) {
-            setCurrentScene(result.renderTree)
-            renderScene(result.renderTree)
-        }
-    }
-
-    const renderDemoScene = () => {
-        try {
-            addTerminalOutput(`[Renderer] Rendering ${config.name} scene...`)
-
-            clearCanvas('#0a0a0f')
-
-            const scene = createDemoScene()
-            scene.calculateLayout(config.width, config.height)
-            scene.render()
-
-            flush()
-
-            addTerminalOutput('[Renderer] ✓ Scene rendered!')
-            scene.destroy()
-        } catch (error) {
-            console.error('Render error:', error)
-            addTerminalOutput(`[Renderer] ✗ Render error: ${error}`)
-        }
-    }
-
-    const renderScene = (scene: RenderNode) => {
-        try {
-            clearCanvas('#0a0a0f')
-
-            scene.calculateLayout(config.width, config.height)
-            scene.render()
-
-            flush()
-        } catch (error) {
-            console.error('Render error:', error)
-            addTerminalOutput(`[Renderer] ✗ Render error: ${error}`)
-        }
+        workerRef.current.postMessage(msg)
     }
 
     const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!currentScene) return
+        if (!currentTree || !workerRef.current) return
 
         const canvas = canvasRef.current
         if (!canvas) return
@@ -228,11 +209,19 @@ function PhonePreview({ device }: PhonePreviewProps) {
         const y = event.clientY - rect.top
 
         // Perform hit testing
-        const hitNode = hitTest(currentScene, { x, y })
+        const nodeId = hitTest(currentTree, { x, y })
 
-        if (hitNode && hitNode.onPress) {
-            addTerminalOutput('[Event] Touch event fired')
-            hitNode.onPress()
+        if (nodeId) {
+            console.log('[DEBUG] Node clicked:', nodeId)
+            addTerminalOutput(`[Event] Click on node ${nodeId}`)
+
+            // Dispatch event to worker
+            const msg: MainToWorkerMessage = {
+                type: 'DISPATCH_EVENT',
+                nodeId,
+                eventType: 'press',
+            }
+            workerRef.current.postMessage(msg)
         }
     }
 

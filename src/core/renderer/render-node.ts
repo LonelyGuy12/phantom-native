@@ -7,10 +7,12 @@
 
 import { createYogaNode, calculateLayout, type LayoutStyle, type LayoutResult } from './yoga-layout'
 import { drawView, drawText, type ViewStyle, type TextStyle } from './skia-renderer'
+import type { SerializableNode } from '../runtime/worker-bridge'
+import { generateNodeId } from '../runtime/worker-bridge'
 
-export type NodeType = 'view' | 'text' | 'image'
+type NodeType = 'view' | 'text'
 
-export interface RenderNodeProps {
+interface RenderNodeProps {
     type: NodeType
     style?: LayoutStyle & ViewStyle & TextStyle
     text?: string
@@ -19,6 +21,7 @@ export interface RenderNodeProps {
 }
 
 export class RenderNode {
+    id: string // Unique identifier for event targeting
     type: NodeType
     style: LayoutStyle & ViewStyle & TextStyle
     text?: string
@@ -28,6 +31,7 @@ export class RenderNode {
     onPress?: () => void // Event handler for touch/click
 
     constructor(props: RenderNodeProps) {
+        this.id = generateNodeId()
         this.type = props.type
         this.style = props.style || {}
         this.text = props.text
@@ -83,6 +87,45 @@ export class RenderNode {
         this.children.forEach(child => {
             child.render(x, y)
         })
+    }
+
+    /**
+   * Convert to serializable format for worker communication
+   */
+    toSerializable(): SerializableNode {
+        if (!this.layout) {
+            throw new Error('Layout not calculated. Call calculateLayout() first.')
+        }
+
+        return {
+            id: this.id,
+            type: this.type,
+            layout: {
+                left: this.layout.left,
+                top: this.layout.top,
+                width: this.layout.width,
+                height: this.layout.height,
+            },
+            style: {
+                backgroundColor: this.style.backgroundColor,
+                borderRadius: this.style.borderRadius,
+                borderColor: this.style.borderColor,
+                borderWidth: this.style.borderWidth,
+                shadowColor: this.style.shadowColor,
+                shadowOffset: this.style.shadowOffset,
+                shadowOpacity: this.style.shadowOpacity,
+                shadowRadius: this.style.shadowRadius,
+            },
+            text: this.text,
+            textStyle: this.type === 'text' ? {
+                color: this.style.color,
+                fontSize: this.style.fontSize,
+                fontWeight: this.style.fontWeight,
+                textAlign: this.style.textAlign,
+            } : undefined,
+            hasOnPress: !!this.onPress,
+            children: this.children.map(child => child.toSerializable()),
+        }
     }
 
     /**

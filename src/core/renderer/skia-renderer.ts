@@ -11,19 +11,60 @@ let CanvasKit: CanvasKitType | null = null
 let surface: Surface | null = null
 let canvas: Canvas | null = null
 
+/**
+ * Load CanvasKit from CDN using script injection
+ * This is the recommended way to load canvaskit-wasm in the browser
+ */
+async function loadCanvasKitFromCDN(): Promise<any> {
+    return new Promise((resolve, reject) => {
+        // Check if already loaded globally
+        if ((window as any).CanvasKitInit) {
+            resolve((window as any).CanvasKitInit)
+            return
+        }
+
+        // Create script tag to load from CDN
+        const script = document.createElement('script')
+        script.src = 'https://unpkg.com/canvaskit-wasm@0.39.1/bin/canvaskit.js'
+        script.async = true
+
+        script.onload = () => {
+            console.log('[Skia] Script loaded, CanvasKitInit available:', !!(window as any).CanvasKitInit)
+            if ((window as any).CanvasKitInit) {
+                resolve((window as any).CanvasKitInit)
+            } else {
+                reject(new Error('CanvasKitInit not found on window after script load'))
+            }
+        }
+
+        script.onerror = () => {
+            reject(new Error('Failed to load CanvasKit script from CDN'))
+        }
+
+        document.head.appendChild(script)
+    })
+}
+
 export async function initSkia(canvasElement: HTMLCanvasElement) {
     if (CanvasKit && surface && canvas) {
         return { CanvasKit, surface, canvas }
     }
 
     try {
-        // Load CanvasKit WASM
-        const CanvasKitInit = (await import('canvaskit-wasm')).default
+        console.log('[Skia] Initializing CanvasKit from CDN...')
+
+        // Load CanvasKit script from CDN
+        const CanvasKitInit = await loadCanvasKitFromCDN()
+        console.log('[Skia] CanvasKitInit loaded, type:', typeof CanvasKitInit)
+
+        // Initialize CanvasKit
         CanvasKit = await CanvasKitInit({
             locateFile: (file: string) => {
-                return `/node_modules/canvaskit-wasm/bin/${file}`
+                return `https://unpkg.com/canvaskit-wasm@0.39.1/bin/${file}`
             }
         })
+
+        console.log('[Skia] CanvasKit initialized')
 
         // Create surface from canvas
         surface = CanvasKit.MakeWebGLCanvasSurface(canvasElement)
@@ -32,7 +73,7 @@ export async function initSkia(canvasElement: HTMLCanvasElement) {
         }
 
         canvas = surface.getCanvas()
-        console.log('✓ Skia CanvasKit initialized')
+        console.log('✓ Skia CanvasKit ready')
 
         return { CanvasKit, surface, canvas }
     } catch (error) {
@@ -46,6 +87,18 @@ export function getSkia() {
         throw new Error('Skia not initialized. Call initSkia() first.')
     }
     return { CanvasKit, surface, canvas }
+}
+
+export function getCanvasKit() {
+    return CanvasKit
+}
+
+export function getSurface() {
+    return surface
+}
+
+export function getCanvas() {
+    return canvas
 }
 
 export interface ViewStyle {

@@ -1,10 +1,11 @@
 /**
  * Hit Testing
  * 
- * Determines which RenderNode was clicked based on canvas coordinates
+ * Determines which node was clicked based on canvas coordinates.
+ * Updated to work with SerializableNode format from worker.
  */
 
-import type { RenderNode } from './render-node'
+import type { SerializableNode } from '../runtime/worker-bridge'
 
 export interface Point {
     x: number
@@ -13,15 +14,14 @@ export interface Point {
 
 /**
  * Perform hit testing to find the topmost node at given coordinates
+ * Returns the node ID instead of the node itself (for worker communication)
  */
 export function hitTest(
-    node: RenderNode,
+    node: SerializableNode,
     point: Point,
     offsetX: number = 0,
     offsetY: number = 0
-): RenderNode | null {
-    if (!node.layout) return null
-
+): string | null {
     const x = offsetX + node.layout.left
     const y = offsetY + node.layout.top
     const width = node.layout.width
@@ -39,13 +39,13 @@ export function hitTest(
     // Check children first (they're on top)
     for (let i = node.children.length - 1; i >= 0; i--) {
         const child = node.children[i]
-        const hit = hitTest(child, point, x, y)
-        if (hit) return hit
+        const hitNodeId = hitTest(child, point, x, y)
+        if (hitNodeId) return hitNodeId
     }
 
-    // If no children were hit and this node has an onPress handler, return it
-    if (node.onPress) {
-        return node
+    // If no children were hit and this node has an onPress handler, return its ID
+    if (node.hasOnPress) {
+        return node.id
     }
 
     // Otherwise return null (pass through to parent)
