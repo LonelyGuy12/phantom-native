@@ -28,7 +28,15 @@ export function transformCode(sourceCode: string): TransformResult {
         initBabel()
 
         const result = Babel.transform(sourceCode, {
-            presets: ['react', 'typescript'],
+            presets: [
+                'react',
+                'typescript',
+                // Transform ES modules to CommonJS so we can handle them
+                ['env', {
+                    modules: 'commonjs',
+                    targets: { esmodules: true }
+                }]
+            ],
             filename: 'App.tsx',
             plugins: [],
         })
@@ -54,26 +62,31 @@ export function transformCode(sourceCode: string): TransformResult {
 /**
  * Wrap transformed code to provide React Native environment
  */
-export function wrapCode(transformedCode: string): string {
+export function wrapCode(code: string): string {
     return `
     (function() {
-      // Mock require for react-native
+      const React = self.__REACT__;
+      const { View, Text, StyleSheet, useState, useEffect } = self.__REACT_NATIVE__;
+      
+      // Provide CommonJS exports (needed for Babel's module transformation)
+      const exports = {};
+      const module = { exports: exports };
+      
+      // Provide require function for CommonJS imports
       const require = (moduleName) => {
         if (moduleName === 'react') {
-          return window.__REACT__;
+          return React;
         }
         if (moduleName === 'react-native') {
-          return window.__REACT_NATIVE__;
+          return { View, Text, StyleSheet, useState, useEffect };
         }
         throw new Error('Module not found: ' + moduleName);
       };
       
-      const exports = {};
-      const module = { exports };
+      ${code}
       
-      ${transformedCode}
-      
-      return module.exports.default || module.exports;
+      // Return the default export or App
+      return module.exports.default || module.exports.App || module.exports || App;
     })()
   `
 }

@@ -7,7 +7,7 @@
 
 import type { MainToWorkerMessage, WorkerToMainMessage } from './worker-bridge'
 import { resetNodeIdCounter } from './worker-bridge'
-import { initYoga } from '../renderer/yoga-layout'
+// Note: Not importing initYoga - will load Yoga from CDN in worker context
 import { transformCode, wrapCode } from './babel-transformer'
 import { buildRenderTree, setupVirtualModules, setStateUpdateCallback, resetState } from './virtual-modules'
 import type { VirtualElement } from './virtual-modules'
@@ -36,9 +36,9 @@ async function initWorker() {
     try {
         log('info', '[Worker] Initializing...')
 
-        // Initialize Yoga WASM in worker context
-        await initYoga()
-        log('info', '[Worker] Yoga WASM loaded')
+        // TODO: Implement Yoga layout in worker
+        // For now, we'll use a simple fallback layout system
+        log('info', '[Worker] Using fallback layout system (Yoga disabled in worker)')
 
         // Setup virtual React Native modules
         setupVirtualModules()
@@ -51,6 +51,7 @@ async function initWorker() {
         log('info', '[Worker] ✓ Ready')
     } catch (error: any) {
         log('error', `[Worker] Initialization failed: ${error.message}`)
+        log('error', `[Worker] Stack: ${error.stack}`)
         const msg: WorkerToMainMessage = {
             type: 'EXECUTION_ERROR',
             error: `Worker initialization failed: ${error.message}`

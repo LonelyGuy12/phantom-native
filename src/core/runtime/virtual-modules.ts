@@ -1,15 +1,15 @@
 /**
  * Virtual React Native Modules
  * 
- * Provides mock implementations of React Native components and APIs
+ * Mocks React Native components and React hooks for in-browser execution
  */
 
-import { RenderNode } from '../renderer/render-node'
+import { SimpleRenderNode } from '../renderer/simple-render-node'
 import type { ViewStyle, TextStyle } from '../renderer/skia-renderer'
 import type { LayoutStyle } from '../renderer/yoga-layout'
 
 // Virtual component tree for current render
-let currentRenderTree: RenderNode | null = null
+let currentRenderTree: SimpleRenderNode | null = null
 let stateUpdateCallback: (() => void) | null = null
 
 export function setStateUpdateCallback(callback: () => void) {
@@ -102,67 +102,47 @@ export interface VirtualElement {
 }
 
 /**
- * Convert Virtual Element tree to RenderNode tree
+ * Build a RenderNode tree from virtual elements
  */
-export function buildRenderTree(element: VirtualElement): RenderNode | null {
+export function buildRenderTree(element: VirtualElement): SimpleRenderNode | null {
     if (!element) return null
 
-    // Handle function components
-    if (typeof element.type === 'function') {
-        resetState()
-        const result = element.type(element.props)
-        return buildRenderTree(result)
-    }
+    const children: SimpleRenderNode[] = []
+    if (element.props.children) {
+        const childArray = Array.isArray(element.props.children)
+            ? element.props.children
+            : [element.props.children]
 
-    const { type, props } = element
-    const { children, style = {}, onPress, ...otherProps } = props
-
-    // Convert to RenderNode
-    if (type === 'View' || type === 'TouchableOpacity') {
-        const childNodes: RenderNode[] = []
-
-        if (children) {
-            const childArray = Array.isArray(children) ? children : [children]
-            for (const child of childArray) {
-                if (typeof child === 'object' && child.type) {
-                    const childNode = buildRenderTree(child)
-                    if (childNode) childNodes.push(childNode)
-                }
+        childArray.forEach(child => {
+            if (typeof child === 'string' || typeof child === 'number') {
+                // Text child
+                children.push(new SimpleRenderNode({
+                    type: 'text',
+                    text: String(child),
+                    style: {},
+                }))
+            } else if (typeof child === 'object' && child) {
+                const childNode = buildRenderTree(child)
+                if (childNode) children.push(childNode)
             }
-        }
-
-        const node = new RenderNode({
-            type: 'view',
-            style: flattenStyle(style),
-            children: childNodes,
-        })
-
-        // Attach event handler
-        if (onPress) {
-            node.onPress = onPress
-        }
-
-        return node
-    }
-
-    if (type === 'Text') {
-        let textContent = ''
-
-        if (children) {
-            const childArray = Array.isArray(children) ? children : [children]
-            textContent = childArray
-                .map(child => typeof child === 'string' || typeof child === 'number' ? String(child) : '')
-                .join('')
-        }
-
-        return new RenderNode({
-            type: 'text',
-            text: textContent,
-            style: flattenStyle(style),
         })
     }
 
-    return null
+    const type = element.type === 'View' || element.type === 'TouchableOpacity'
+        ? 'view'
+        : element.type === 'Text'
+            ? 'text'
+            : 'view'
+
+    return new SimpleRenderNode({
+        type,
+        style: flattenStyle(element.props.style) || {},
+        text: type === 'text' && children.length === 1 && children[0].text
+            ? children[0].text
+            : undefined,
+        children: type === 'text' && children.length === 1 ? [] : children,
+        onPress: element.props.onPress,
+    })
 }
 
 /**
@@ -178,11 +158,14 @@ function flattenStyle(style: any): LayoutStyle & ViewStyle & TextStyle {
     return style
 }
 
+
 /**
  * Setup global React and React Native
  */
 export function setupVirtualModules() {
-    (window as any).__REACT__ = React;
-    (window as any).__REACT_NATIVE__ = ReactNative
+    // Expose React and ReactNative globally in worker context
+    // Use self instead of window for worker compatibility
+    (self as any).__REACT__ = React;
+    (self as any).__REACT_NATIVE__ = ReactNative
     console.log('✓ Virtual modules initialized')
 }

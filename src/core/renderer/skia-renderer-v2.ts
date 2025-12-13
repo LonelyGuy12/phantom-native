@@ -167,31 +167,25 @@ function drawText(
     paint.setAntiAlias(true)
     paint.setColor(CanvasKit.parseColorString(textStyle.color || '#ffffff'))
 
-    const fontMgr = CanvasKit.FontMgr.RefDefault()
     const fontSize = textStyle.fontSize || 16
-    const fontStyle = CanvasKit.FontStyle.Normal
-    const typeface = fontMgr.matchFamilyStyle('Inter, Arial, sans-serif', fontStyle)
-    const font = new CanvasKit.Font(typeface, fontSize)
 
-    // Measure text
-    const textBlob = CanvasKit.TextBlob.MakeFromText(text, font)
+    // Create font with null typeface (uses default system font)
+    const font = new CanvasKit.Font(null, fontSize)
 
     // Calculate position based on alignment
     let textX = x
     if (textStyle.textAlign === 'center') {
-        const blob = CanvasKit.TextBlob.MakeFromText(text, font)
-        const bounds = blob.getBounds()
-        textX = x + (width - bounds[2]) / 2
+        // Approximate text width for centering
+        const approxWidth = text.length * fontSize * 0.6
+        textX = x + (width - approxWidth) / 2
     } else if (textStyle.textAlign === 'right') {
-        const blob = CanvasKit.TextBlob.MakeFromText(text, font)
-        const bounds = blob.getBounds()
-        textX = x + width - bounds[2]
+        const approxWidth = text.length * fontSize * 0.6
+        textX = x + width - approxWidth
     }
 
-    canvas.drawTextBlob(textBlob, textX, y + fontSize, paint)
+    // Draw text
+    canvas.drawText(text, textX, y + fontSize, paint, font)
 
     paint.delete()
     font.delete()
-    typeface.delete()
-    fontMgr.delete()
 }
