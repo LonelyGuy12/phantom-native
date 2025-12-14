@@ -73,6 +73,14 @@ export async function initSkia(canvasElement: HTMLCanvasElement) {
         }
 
         canvas = surface.getCanvas()
+
+        // Scale canvas to account for devicePixelRatio
+        const scale = window.devicePixelRatio || 1
+        if (scale !== 1) {
+            console.log(`[Skia] Applying devicePixelRatio scale: ${scale}`)
+            canvas.scale(scale, scale)
+        }
+
         console.log('✓ Skia CanvasKit ready')
 
         return { CanvasKit, surface, canvas }

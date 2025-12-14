@@ -11,7 +11,7 @@ import { getSkia } from './skia-renderer'
 /**
  * Render a serializable tree to canvas
  */
-export function renderSerializableTree(tree: SerializableRenderTree) {
+export function renderSerializableTree(tree: SerializableNode) {
     const { CanvasKit, surface, canvas } = getSkia()
 
     if (!CanvasKit || !surface || !canvas) {
@@ -19,28 +19,39 @@ export function renderSerializableTree(tree: SerializableRenderTree) {
         return
     }
 
-    console.log('[Renderer] Rendering tree:', tree)
+    console.log('[Renderer] Rendering tree:', JSON.stringify(tree, null, 2))
 
-    // Clear canvas
-    canvas.clear(CanvasKit.BLACK)
+    // Clear canvas with dark background (not pure black so we can debug)
+    const clearColor = CanvasKit.Color(10, 10, 15, 1.0) // Very dark gray
+    canvas.clear(clearColor)
 
     try {
-        // Render root node
-        renderNode(tree.root, CanvasKit, canvas)
+        // Render root node - tree IS the root node, start at (0, 0)
+        console.log('[Renderer] Starting to render root node...')
+        renderNode(tree, 0, 0, CanvasKit, canvas)
 
         // Flush to screen
         surface.flush()
 
-        console.log('[Renderer] ✓ Render complete')
+        console.log('[Renderer] ✓ Render complete and flushed')
     } catch (error) {
         console.error('[Renderer] Render error:', error)
+        console.error('[Renderer] Error stack:', (error as Error).stack)
     }
 }
 
 /**
  * Recursively render a node and its children
+ * @param offsetX - accumulated X offset from parent
+ * @param offsetY - accumulated Y offset from parent
  */
-function renderNode(node: SerializableNode, CanvasKit: any, canvas: any) {
+function renderNode(
+    node: SerializableNode,
+    offsetX: number,
+    offsetY: number,
+    CanvasKit: any,
+    canvas: any
+) {
     if (!node || !node.layout) {
         console.warn('[Renderer] Node missing layout:', node)
         return
@@ -48,20 +59,24 @@ function renderNode(node: SerializableNode, CanvasKit: any, canvas: any) {
 
     const { left, top, width, height } = node.layout
 
-    console.log(`[Renderer] Drawing ${node.type} at (${left}, ${top}) size (${width}x${height})`)
+    // Calculate absolute position by adding parent offset
+    const absoluteX = offsetX + left
+    const absoluteY = offsetY + top
 
-    // Draw based on type
+    console.log(`[Renderer] Drawing ${node.type} at (${absoluteX}, ${absoluteY}) size (${width}x${height})`)
+
+    // Draw based on type at absolute position
     if (node.type === 'view') {
-        drawView(left, top, width, height, node.style, CanvasKit, canvas)
+        drawView(absoluteX, absoluteY, width, height, node.style, CanvasKit, canvas)
     } else if (node.type === 'text' && node.text) {
         const textStyle = node.textStyle || {}
-        drawText(node.text, left, top, width, textStyle, CanvasKit, canvas)
+        drawText(node.text, absoluteX, absoluteY, width, textStyle, CanvasKit, canvas)
     }
 
-    // Render children
+    // Render children with accumulated offset
     if (node.children && node.children.length > 0) {
         node.children.forEach(child => {
-            renderNode(child, CanvasKit, canvas)
+            renderNode(child, absoluteX, absoluteY, CanvasKit, canvas)
         })
     }
 }
@@ -136,26 +151,20 @@ function drawText(
     const paint = new CanvasKit.Paint()
     paint.setAntiAlias(true)
     paint.setColor(CanvasKit.parseColorString(textStyle.color || '#ffffff'))
+    paint.setStyle(CanvasKit.PaintStyle.Fill)
 
     const fontSize = textStyle.fontSize || 16
 
-    // Create font with null typeface (uses default system font)
+    // Use simple font - this should work on all systems
     const font = new CanvasKit.Font(null, fontSize)
 
-    // Calculate position based on alignment
-    let textX = x
-    if (textStyle.textAlign === 'center') {
-        // Approximate text width for centering
-        const approxWidth = text.length * fontSize * 0.6
-        textX = x + (width - approxWidth) / 2
-    } else if (textStyle.textAlign === 'right') {
-        const approxWidth = text.length * fontSize * 0.6
-        textX = x + width - approxWidth
-    }
+    // Simple text rendering - draw directly
+    const textY = y + fontSize
 
-    // Draw text
-    canvas.drawText(text, textX, y + fontSize, paint, font)
+    // Draw the text
+    canvas.drawText(text, x, textY, paint, font)
 
+    // Cleanup
     paint.delete()
     font.delete()
 }

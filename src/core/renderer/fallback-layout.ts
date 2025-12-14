@@ -58,8 +58,17 @@ export function calculateLayout(
     const paddingRight = style.paddingRight ?? style.padding ?? 0
 
     // Calculate own dimensions
-    let width = parseSize(style.width, containerWidth) ?? containerWidth
-    let height = parseSize(style.height, containerHeight) ?? containerHeight
+    let width: number
+    let height: number
+
+    // Handle flex: 1 to take full container size
+    if (style.flex && style.flex > 0) {
+        width = containerWidth
+        height = containerHeight
+    } else {
+        width = parseSize(style.width, containerWidth) ?? containerWidth
+        height = parseSize(style.height, containerHeight) ?? containerHeight
+    }
 
     // Apply min/max constraints
     if (style.minWidth) width = Math.max(width, style.minWidth)
@@ -67,15 +76,24 @@ export function calculateLayout(
     if (style.minHeight) height = Math.max(height, style.minHeight)
     if (style.maxHeight) height = Math.min(height, style.maxHeight)
 
+    const layout: LayoutResult = {
+        left: 0,
+        top: 0,
+        width,
+        height,
+    }
+
+    node.layout = layout
+
     // Calculate children layout
-    const flexDirection = style.flexDirection || 'column'
-    const justifyContent = style.justifyContent || 'flex-start'
-    const alignItems = style.alignItems || 'flex-start'
-
-    const contentWidth = width - paddingLeft - paddingRight
-    const contentHeight = height - paddingTop - paddingBottom
-
     if (node.children && node.children.length > 0) {
+        const flexDirection = style.flexDirection || 'column'
+        const justifyContent = style.justifyContent || 'flex-start'
+        const alignItems = style.alignItems || 'flex-start'
+
+        const contentWidth = width - paddingLeft - paddingRight
+        const contentHeight = height - paddingTop - paddingBottom
+
         layoutChildren(
             node.children,
             contentWidth,
@@ -88,14 +106,6 @@ export function calculateLayout(
         )
     }
 
-    const layout: LayoutResult = {
-        left: 0,
-        top: 0,
-        width,
-        height,
-    }
-
-    node.layout = layout
     return layout
 }
 
@@ -157,7 +167,7 @@ function layoutChildren(
 
     currentPos += startOffset
 
-    children.forEach((child, index) => {
+    children.forEach((child) => {
         const childStyle = child.style || {}
 
         // Calculate child main size
@@ -194,28 +204,16 @@ function layoutChildren(
             crossPos += crossSize - childCrossSize
         }
 
-        // Set child layout
-        child.layout = {
-            left: isRow ? currentPos : crossPos,
-            top: isRow ? crossPos : currentPos,
-            width: isRow ? childMainSize : childCrossSize,
-            height: isRow ? childCrossSize : childMainSize,
-        }
+        // Calculate layout for this child with its dimensions
+        const childWidth = isRow ? childMainSize : childCrossSize
+        const childHeight = isRow ? childCrossSize : childMainSize
 
-        // Recursively layout child's children
-        if (child.children && child.children.length > 0) {
-            const childWidth = child.layout.width
-            const childHeight = child.layout.height
-            layoutChildren(
-                child.children,
-                childWidth,
-                childHeight,
-                0,
-                0,
-                childStyle.flexDirection || 'column',
-                childStyle.justifyContent || 'flex-start',
-                childStyle.alignItems || 'flex-start'
-            )
+        calculateLayout(child, childWidth, childHeight)
+
+        // Now update the position
+        if (child.layout) {
+            child.layout.left = isRow ? currentPos : crossPos
+            child.layout.top = isRow ? crossPos : currentPos
         }
 
         currentPos += childMainSize + spacing
